@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>bla</title>
+  <link rel="stylesheet" type="text/css" href="/lib/c3/c3.css">
+  <script type="text/javascript" src="/lib/jquery-3.1.1.min.js"></script>
+  <script type="text/javascript" src="/lib/d3/d3.js"></script>
+  <script type="text/javascript" src="/lib/c3/c3.js"></script>
+</head>
+<body>
+  <div id="chart"></div>
+  <script type="text/javascript">
+    {% if chart_data is not none %}   
+      var chart_data = {{ h.literal(chart_data|safe) }};
+    {% else %}
+      var chart_data = "";
+    {% endif %}
+
+    {% if chart_config is not none %}
+      var chart_config = JSON.parse(`{{ resource_view.get('chart_config')|safe }}`);
+    {% else %}
+      var chart_config = {
+        delimiter: ',' ,
+        german_numbers: false ,
+        chart_type: 'line',
+        keys: {}
+      };
+    {% endif %}
+
+    var c3config = {};
+    var mappedData = {};
+
+
+    var mapData = function() {
+      var mappedData = d3.dsv(chart_config.delimiter).parse(chart_data , 
+        function(d) {
+          var row_mappings = {};
+          $.each(chart_config.keys, function(key, value) {
+            var mapping = d[key];
+            if (value.type == 'number') {
+              if (chart_config.german_numbers) {
+                mapping = mapping.replace(/\./g, '');
+                mapping = mapping.replace(",",".");
+              } else {
+                mapping = mapping.replace(/\,/g, '');
+              }
+              mapping = +mapping;
+            }           
+            row_mappings[key] = mapping;
+          });
+          return row_mappings;
+        }
+      );
+      return mappedData;
+    }
+
+    var getC3config =  function(data) {
+      data = d3toc3(data, Object.keys(chart_config.keys));
+
+      var c3config = {
+        data: {
+          rows: data ,
+          type: chart_config.chart_type ,
+          x: chart_config.x_axis ,
+        }
+      }
+      // if (chart_config.x_type == 'category') {
+        c3config.axis = {
+          x: {
+            type: 'category'
+          }
+        }
+      // }
+      return c3config;
+
+    }
+
+    var d3toc3 = function(data, keys) {
+      var c3data = [];
+      c3data.push(keys);
+      data.forEach(function(d3row) {
+        var c3row = [];
+        keys.forEach(function(key) {
+          c3row.push(d3row[key]);
+        });
+        c3data.push(c3row);
+      });
+      return c3data;
+    }
+
+
+    var splitData = function(data, row_selection) {
+      var reduced = [];
+
+      if (row_selection.trim() == "") {
+        return data;
+      }
+
+      console.log(row_selection);
+
+      var chunks = $.map(
+        row_selection.split(","), 
+        function(x) {
+          var expression = $.map(
+            x.trim().split("-"),
+            function(x) {
+              return parseInt(x);
+            }
+          );
+          if (expression.length == 1) {
+            expression.push(expression[0] + 1);
+          } else {
+            expression[1] = expression[1] + 1;
+          }
+          return [expression];
+        }
+      );
+
+      console.log(reduced);
+
+      $.each(chunks, function(index, value) {
+        reduced = $.merge(reduced, data.slice(value[0], value[1]));
+      });
+
+      console.log(reduced);
+
+      return reduced;
+    }
+
+    mappedData = mapData();
+    mappedData = splitData(mappedData, chart_config.row_selection);
+    c3config = getC3config(mappedData);
+    var chart = c3.generate(c3config);
+
+    // var chart = c3.generate({
+    //   data: {
+    //     url: {{ h.literal(resource_url) }}
+    //   }
+    // });
+  </script>
+
+</body>
+</html>

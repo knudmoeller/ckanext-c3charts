@@ -1,0 +1,369 @@
+{% extends 'base.html' %}
+
+{% import 'macros/form.html' as form %}
+
+{% block styles %}
+    {{ super() }}
+  <link rel="stylesheet" type="text/css" href="/css/c3charts.css">    
+{% endblock %}
+
+{% block page %}
+ 
+<div class="wizard" id="chart_configurer">
+  <ul class="nav nav-tabs" id="myTab">
+    <li class="active"><a href="#wizard_download">Download <i class="icon-ok" style="display: none;"></i></a></li>
+    <li><a href="#wizard_data_configuration">Konfiguration Daten <i class="icon-ok" style="display: none;"></i></a></li>
+    <li><a href="#wizard_chart_configuration">Konfiguration Diagramm <i class="icon-ok" style="display: none;"></i></a></li>
+  </ul>
+  <div class="wizard-panes">
+    <div id="wizard_download" class="wizard-pane active">
+      <h2><span class="wizard-pane-index"></span> Download</h2>
+      <p>Laden sie die Ressource herunter.</p>
+      <div id="raw_data_container" class="control-group control-full">
+        <textarea id="field-chart_data" name="chart_data" rows="10"></textarea>
+        <div class="overlay">
+          <div>Loading...</div>
+        </div>
+      </div>
+      <button id="download_data" class="btn" type="button" onclick="this.blur();loadCSV();">Download Starten</button>
+      <button class="btn wizard-pane-next" type="button" onclick="wizardTabs.nextPane(this);" disabled>Weiter</button>
+
+    </div>
+    <div id="wizard_data_configuration" class="wizard-pane">
+      <h2><span class="wizard-pane-index"></span> Konfiguration Daten</h2>
+      <p>Konfigurieren sie den Import der Daten zur Weiterverarbeitung.</p>
+      <div id="parsed_data_container">
+        <table class="table table-striped table-condensed">
+          <thead>
+            <tr>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+      <div id="data_config" class="config-form">
+        <div class="control-group group__delimiter">
+          <label class="control-label">CSV Delimiter</label>
+          <div class="controls">
+            <input class="span1 update" type="text" id="delimiter"/> 
+          </div>
+        </div>
+        <div class="control-group group__number-formatting">
+          <label class="control-label" for="german-numbers">Deutsche Zahlen-formatierung</label>
+          <div class="controls">
+            <label class="checkbox">
+              <input type="checkbox" id="german-numbers" class="update"> 
+              ("3<span class="mark__character">.</span>100<span class="mark__character">,</span>32")
+            </label>
+          </div>
+        </div>
+      </div>
+      <button id="parse_data" class="btn" type="button" onclick="this.blur();parseData();">CSV Daten Parsen</button>
+      <button class="btn wizard-pane-next" type="button" onclick="wizardTabs.nextPane(this);">Weiter</button>
+    </div>
+    <div id="wizard_chart_configuration" class="wizard-pane">
+      <h2><span class="wizard-pane-index"></span> Konfiguration Diagramm</h2>
+      <p>Konfigurieren sie das Diagramm.</p>
+      <div id="chart_config" class="config-form">
+        <div class="control-group group__x-axis">
+          <label>X-Achse</label>
+          <select id="x-axis-select" class="update">
+          </select>
+        </div>
+        <div class="control-group group__chart_type">
+          <label>Diagramm Typ</label>
+          <select id="chart-type" class="update">
+            <option value='line'>Liniendiagramm</option>
+            <option value='bar'>Balkendiagramm</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Zeilenauswahl</label>
+          <input class="span3" type="text" id="row_selection"/> 
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+{{ form.textarea('chart_config', id='field-chart_config', label=_('Chart Configuration'), value=data.chart_config, classes=['hidden']) }}
+
+
+
+{% endblock %}
+
+{% block scripts %}
+  <!-- <script type="text/javascript" src="/lib/c3/c3.js"></script> -->
+  <script type="text/javascript" src="/lib/d3/d3.js"></script>
+  <script type="text/javascript" src="/lib/wizard-tabs.js" defer="defer"></script>
+  <script type="text/javascript">
+    var data_url = {{ h.literal(resource_url) }};
+
+    {% if chart_data is not none %}   
+      var raw_data = {{ h.literal(chart_data|safe) }};
+    {% else %}
+      var raw_data = "";
+    {% endif %}
+
+    {% if chart_config is not none %}
+      var chart_config = JSON.parse(`{{ resource_view.get('chart_config')|safe }}`);
+    {% else %}
+      var chart_config = {
+        delimiter: ',' ,
+        german_numbers: false ,
+        chart_type: 'line',
+        keys: {}
+      };
+    {% endif %}
+
+    var parsed_data = {};
+
+    var getHeaders = function(data) {
+      var headers = $.map(data[0], function(element,index) { return index; });
+      return headers;
+    }
+
+    var getSelectedKeys = function(data) {
+      return $.map(data.keys, function(element,index) { return index; });
+    }
+
+    var fillDataTable = function(data) {
+      var headers = getHeaders(data);
+
+      // header:
+      var thead = $("#parsed_data_container thead");
+      thead.html("");
+      var trow = document.createElement("tr");
+      $(trow).append("<th>#</th>")
+      $.each(headers, function(index, column_header) {
+        $(trow).append("<th>" + column_header + "</th>");
+      });
+      thead.append(trow);
+
+      // include column:
+      trow = document.createElement("tr");      
+      $(trow).append("<th></th>");
+      $.each(headers, function(index, column_header) {
+        $(trow).append("<th id='" + column_header + "_include'><input type='checkbox' class='update'></th>");
+      });
+      $(trow).append("</tr>");
+      thead.append(trow);
+
+      // datatype selection:
+      trow = document.createElement("tr");      
+      $(trow).append("<th></th>");
+      $.each(headers, function(index, column_header) {
+        $(trow).append("<th id='" + column_header + "_datatype'><select class='update'><option value='string'>String</option><option value='number'>Zahl</option></select></th>");
+      });
+      $(trow).append("</tr>");
+      thead.append(trow);
+
+      // body:
+      var tbody = $("#parsed_data_container tbody");
+      tbody.html("");
+      $.each(parsed_data, function(index, value) {
+        trow = "<tr>";
+        trow +="<td>" + index + "</td>";
+        $.each(headers, function(index, column_header) {
+          trow += "<td>" + value[column_header] + "</td>";
+        });
+        trow +="</tr>";
+        tbody.append(trow);
+      });
+
+      $("#wizard_data_configuration,#wizard_chart_configuration").unbind("change");
+      $("#wizard_data_configuration,#wizard_chart_configuration").change(function(info) {
+        configChanged(info);
+      });
+
+      loadConfig(chart_config);
+    }
+
+    var updateConfig = function() {
+      var config = {};
+      config.german_numbers = $("#german-numbers").is(':checked');;
+      config.delimiter = $("#delimiter").val();
+
+      config.keys = {};
+      var headers = getHeaders(parsed_data);
+      $.each(headers, function(index, column_id) {
+        var include_checkbox = $("#" + column_id + "_include input");
+        if (include_checkbox.is(':checked')) {
+          var column_type = $("#" + column_id + "_datatype select").val();
+          config.keys[column_id] = {};
+          config.keys[column_id].label = column_id;
+          config.keys[column_id].type = column_type;
+        }
+      });
+
+      config.x_axis = $("#x-axis-select").val();
+      config.chart_type = $("#chart-type").val();
+      config.row_selection = $("#row_selection").val();
+
+      return config;
+    }
+
+    var configChanged = function(info) {
+      // console.log("update");
+      console.log(info.target);
+      chart_config = updateConfig();
+      $("#field-chart_config").text(JSON.stringify(chart_config));
+      loadConfig(chart_config);
+      if ($(info.target).hasClass("update")) {
+        parsed_data = parseData(raw_data);
+        fillDataTable(parsed_data);
+      }
+    }
+
+    var loadConfig = function(config) {
+      var headers = getHeaders(parsed_data);
+      $("#x-axis-select").html("");
+      $.each(headers, function(index, value) {
+        $("#x-axis-select").append("<option value='" + value + "' disabled>" + value + "</option>")
+      });
+      $.each(config.keys, function(index, value) {
+        $("#" + index + "_include input").prop('checked', true);
+        $("#" + index + "_datatype select").val(config.keys[index].type);
+        $("#x-axis-select option[value='" + index + "']").prop("disabled", false);
+      });
+      $("#german-numbers").prop("checked", config.german_numbers);
+      if ($.inArray(chart_config.x_axis, getSelectedKeys(chart_config)) >= 0) {
+        $("#x-axis-select").val(config.x_axis);
+      } else {
+        $("#x-axis-select").val(getSelectedKeys(chart_config)[0]);
+      }
+      $("#chart-type").val(config.chart_type);
+      $("#delimiter").val(config.delimiter);
+      $("#row_selection").val(config.row_selection);
+    }
+
+    var loadCSV = function() {
+      showLoadingOverlay(true);
+      $.ajax({
+        url: data_url ,
+        success: function(data) {
+          raw_data = data;
+          // fillColumnTable(getHeaders(raw_data));
+          setRawCSV(raw_data);
+          // simple parse to have header information available:
+          parsed_data = d3.dsv(chart_config.delimiter).parse(raw_data);
+          // parse again, now with more logic and header information available:
+          parsed_data = parseData(raw_data);
+          fillDataTable(parsed_data);
+          // loadConfig(JSON.parse($("#field-chart_config").text()));
+          updateWizardUI();
+        } ,
+        complete: function() {
+          showLoadingOverlay(false);
+        }
+      });
+
+    };
+
+    var parseData = function(data) {
+      var mappedData = d3.dsv(chart_config.delimiter).parse(data , 
+        function(d) {
+          var row_mappings = {};
+          var headers = getHeaders(parsed_data);
+          $.each(headers, function(index, value) {
+            var mapping = d[value];
+            if (chart_config.keys.hasOwnProperty(value)) {
+              if (chart_config.keys[value].type == 'number') {
+                if (chart_config.german_numbers) {
+                  mapping = mapping.replace(/\./g, '');
+                  mapping = mapping.replace(",",".");
+                } else {
+                  mapping = mapping.replace(/\,/g, '');
+                }
+                mapping = +mapping;
+              }           
+            }
+            row_mappings[value] = mapping;
+          });
+          return row_mappings;
+        }
+      );
+      return mappedData;
+    }
+
+    var splitData = function(data, row_selection) {
+      var reduced = [];
+
+      if (row_selection.trim() == "") {
+        return data;
+      }
+
+      var chunks = $.map(
+        row_selection.split(","), 
+        function(x) {
+          var expression = $.map(
+            x.trim().split("-"),
+            function(x) {
+              return parseInt(x);
+            }
+          );
+          if (expression.length == 1) {
+            expression.push(expression[0] + 1);
+          } else {
+            expression[1] = expression[1] + 1;
+          }
+          return [expression];
+        }
+      );
+
+      $.each(chunks, function(index, value) {
+        reduced = $.merge(reduced, data.slice(value[0], value[1]));
+      });
+
+      return reduced;
+    }
+
+    var setRawCSV = function(dataString) {
+      $("#field-chart_data").val(dataString);
+    }
+
+    var updateWizardUI = function() {
+      if (raw_data && raw_data.length > 0) {
+        $("a[href=#wizard_download] i").show();
+        $("#download_data").text("Erneut Downloaden");
+        $("#wizard_download .wizard-pane-next").prop("disabled", false);
+        $("a[href=#wizard_data_configuration]").prop("disabled", false);
+        $("a[href=#wizard_chart_configuration]").prop("disabled", false);
+      } else {
+        $("a[href=#wizard_download] i").hide();
+        $("#download_data").text("Download Starten");
+        $("#wizard_download .wizard-pane-next").prop("disabled", true);
+        $("a[href=#wizard_data_configuration]").prop("disabled", true);
+        $("a[href=#wizard_chart_configuration]").prop("disabled", true);
+      }
+    }
+
+    var showLoadingOverlay = function(show) {
+      if (show) {
+        $("#wizard_download .overlay").show();
+      } else {
+        $("#wizard_download .overlay").hide();
+      }
+    }
+
+    window.onload = function() {
+      wizardTabs.initTabs();
+      $.each($("#chart_configurer .wizard-pane-index"), function(index, value) { $(value).text(index + 1); });
+      setRawCSV(raw_data);
+      showLoadingOverlay(false);
+      updateWizardUI();
+
+      if (raw_data && raw_data.length > 0) {
+        // simple parse to have header information available:
+        parsed_data = d3.dsv(chart_config.delimiter).parse(raw_data);
+        // parse again, now with more logic and header information available:
+        parsed_data = parseData(raw_data);
+        fillDataTable(parsed_data);
+        loadConfig(chart_config);
+      }
+    }
+  </script>
+{% endblock %}
