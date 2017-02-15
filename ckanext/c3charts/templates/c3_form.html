@@ -82,6 +82,14 @@
           <label>Zeilenauswahl</label>
           <input class="span3" type="text" id="row_selection"/> 
         </div>
+        <div class="control-group">
+          <label>Bezeichner X-Achse</label>
+          <input class="span3" type="text" id="x-axis-label"/> 
+        </div>
+        <div class="control-group">
+          <label>Bezeichner Y-Achse</label>
+          <input class="span3" type="text" id="y-axis-label"/> 
+        </div>
       </div>
     </div>
   </div>
@@ -115,7 +123,9 @@
         delimiter: ',' ,
         german_numbers: false ,
         chart_type: 'line',
-        keys: {}
+        keys: {},
+        x_axis_label: 'X-Achse',
+        y_axis_label: 'Y-Achse'
       };
     {% endif %}
 
@@ -202,6 +212,8 @@
       config.x_axis = $("#x-axis-select").val();
       config.chart_type = $("#chart-type").val();
       config.row_selection = $("#row_selection").val();
+      config.x_axis_label = $("#x-axis-label").val();
+      config.y_axis_label = $("#y-axis-label").val();
 
       return config;
     }
@@ -238,6 +250,8 @@
       $("#chart-type").val(config.chart_type);
       $("#delimiter").val(config.delimiter);
       $("#row_selection").val(config.row_selection);
+      $("#x-axis-label").val(config.x_axis_label);
+      $("#y-axis-label").val(config.y_axis_label);
     }
 
     var loadCSV = function() {

@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>bla</title>
+  <title>{{ resource_view.get('title')|safe }}</title>
   <link rel="stylesheet" type="text/css" href="/lib/c3/c3.css">
   <script type="text/javascript" src="/lib/jquery-3.1.1.min.js"></script>
   <script type="text/javascript" src="/lib/d3/d3.js"></script>
   <script type="text/javascript" src="/lib/c3/c3.js"></script>
 </head>
 <body>
+  <h2>{{ resource_view.get('title')|safe }}</h2>
   <div id="chart"></div>
   <script type="text/javascript">
     {% if chart_data is not none %}   
@@ -67,7 +68,17 @@
       // if (chart_config.x_type == 'category') {
         c3config.axis = {
           x: {
-            type: 'category'
+            type: 'category',
+            label: {
+              text: chart_config.x_axis_label,
+              position: 'outer-center'
+            }
+          } ,
+          y: {
+            label: {
+              text: chart_config.y_axis_label,
+              position: 'outer-middle'
+            }
           }
         }
       // }
