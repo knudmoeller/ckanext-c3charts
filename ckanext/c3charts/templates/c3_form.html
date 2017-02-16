@@ -200,7 +200,7 @@
       config.keys = {};
       var headers = getHeaders(parsed_data);
       $.each(headers, function(index, column_id) {
-        var include_checkbox = $("#" + column_id + "_include input");
+        var include_checkbox = $("#" + escapeSelector(column_id + "_include input"));
         if (include_checkbox.is(':checked')) {
           var column_type = $("#" + column_id + "_datatype select").val();
           config.keys[column_id] = {};
@@ -225,6 +225,7 @@
       $("#field-chart_config").text(JSON.stringify(chart_config));
       loadConfig(chart_config);
       if ($(info.target).hasClass("update")) {
+        parsed_data = d3.dsv(chart_config.delimiter).parse(raw_data);
         parsed_data = parseData(raw_data);
         fillDataTable(parsed_data);
       }
@@ -361,6 +362,12 @@
       } else {
         $("#wizard_download .overlay").hide();
       }
+    }
+
+    var escapeSelector = function(selector) {
+      return selector.replace(/(!|"|#|\$|%|\'|\(|\)|\*|\+|\,|\.|\/|\:|\;|\?|@)/g, function($1, $2) {
+        return "\\" + $2;
+      });
     }
 
     window.onload = function() {
